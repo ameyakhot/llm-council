@@ -1,13 +1,15 @@
-"""3-stage LLM Council orchestration."""
+"""3-stage LLM Council orchestration with internet research."""
 
 from typing import List, Dict, Any, Tuple
-from .openrouter import query_models_parallel, query_model
+from .groq import query_models_parallel, query_model, query_model_with_tools
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from .tools import TAVILY_SEARCH_TOOL, execute_tool
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
+    Each model can use internet research if needed.
 
     Args:
         user_query: The user's question
@@ -17,8 +19,13 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     """
     messages = [{"role": "user", "content": user_query}]
 
-    # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    # Query all models in parallel with tool support for internet research
+    responses = await query_models_parallel(
+        COUNCIL_MODELS,
+        messages,
+        tools=[TAVILY_SEARCH_TOOL],
+        tool_executor=execute_tool
+    )
 
     # Format results
     stage1_results = []
@@ -158,8 +165,13 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
-    # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    # Query the chairman model with tool support for additional research if needed
+    response = await query_model_with_tools(
+        CHAIRMAN_MODEL,
+        messages,
+        tools=[TAVILY_SEARCH_TOOL],
+        tool_executor=execute_tool
+    )
 
     if response is None:
         # Fallback if chairman fails
@@ -274,8 +286,8 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    # Use llama-3.1-8b-instant for title generation (fast and cheap)
+    response = await query_model("llama-3.1-8b-instant", messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
