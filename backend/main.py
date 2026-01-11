@@ -1,5 +1,6 @@
 """FastAPI backend for LLM Council."""
 
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -8,16 +9,26 @@ from typing import List, Dict, Any
 import uuid
 import json
 import asyncio
+from dotenv import load_dotenv
 
 from . import storage
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 
+load_dotenv()
+
 app = FastAPI(title="LLM Council API")
 
-# Enable CORS for local development
+# Get allowed origins from environment or use defaults
+cors_origins_str = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:3000"
+)
+allowed_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
+# Enable CORS with configurable origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
