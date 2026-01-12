@@ -28,7 +28,7 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 # CORS settings - stored as string, parsed to list when needed
 CORS_ORIGINS = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:5173,http://localhost:3000"
+    "http://localhost:5173,http://localhost:3000,https://www.brainstom.in,https://brainstom.in"
 )
 
 # Data directory for conversation storage
