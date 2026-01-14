@@ -35,6 +35,7 @@ function App() {
     try {
       const conv = await api.getConversation(id);
       setCurrentConversation(conv);
+      console.log('loadConversation: Successfully loaded conversation', id);
     } catch (error) {
       console.error('Failed to load conversation:', error);
     }
@@ -48,6 +49,7 @@ function App() {
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
+      console.log('handleNewConversation: Created new conversation', newConv.id);
     } catch (error) {
       console.error('Failed to create conversation:', error);
     }
@@ -55,19 +57,30 @@ function App() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+    console.log('handleSelectConversation: Selected conversation ID', id);
   };
 
   const handleSendMessage = async (content) => {
-    if (!currentConversationId) return;
+    console.log('handleSendMessage: Called with content:', content);
+    if (!currentConversationId) {
+      console.log('handleSendMessage: No currentConversationId, returning.');
+      return;
+    }
+    
+    console.log('handleSendMessage: currentConversation before optimistic update:', JSON.stringify(currentConversation)); // Log before optimistic update
 
     setIsLoading(true);
     try {
       // Optimistically add user message to UI
       const userMessage = { role: 'user', content };
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...prev.messages, userMessage],
-      }));
+      setCurrentConversation((prev) => {
+        const updatedConversation = {
+          ...prev,
+          messages: [...(prev?.messages || []), userMessage],
+        };
+        console.log('handleSendMessage: currentConversation after optimistic user message:', JSON.stringify(updatedConversation)); // Log after optimistic user message
+        return updatedConversation;
+      });
 
       // Create a partial assistant message that will be updated progressively
       const assistantMessage = {
@@ -84,85 +97,112 @@ function App() {
       };
 
       // Add the partial assistant message
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...prev.messages, assistantMessage],
-      }));
+      setCurrentConversation((prev) => {
+        const updatedConversation = {
+          ...prev,
+          messages: [...(prev?.messages || []), assistantMessage],
+        };
+        console.log('handleSendMessage: currentConversation after optimistic assistant placeholder:', JSON.stringify(updatedConversation)); // Log after optimistic assistant placeholder
+        return updatedConversation;
+      });
 
       // Send message with streaming
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
+        console.log(`--- onEvent callback triggered. Event Type: ${eventType} ---`);
         switch (eventType) {
           case 'stage1_start':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.stage1 = true;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage1_start): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'stage1_complete':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage1 = event.data;
               lastMsg.loading.stage1 = false;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage1_complete): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'stage2_start':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.stage2 = true;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage2_start): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'stage2_complete':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage2 = event.data;
               lastMsg.metadata = event.metadata;
               lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage2_complete): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'stage3_start':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.loading.stage3 = true;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage3_start): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'stage3_complete':
             setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
+              const messages = [...(prev?.messages || [])];
               const lastMsg = messages[messages.length - 1];
               lastMsg.stage3 = event.data;
               lastMsg.loading.stage3 = false;
-              return { ...prev, messages };
+              const updatedConversation = { ...prev, messages };
+              console.log('onEvent (stage3_complete): currentConversation updated.');
+              return updatedConversation;
             });
             break;
 
           case 'title_complete':
-            // Reload conversations to get updated title
-            loadConversations();
+            console.log('onEvent (title_complete): Reloading conversations.');
+            loadConversations(); // Reload conversations to get updated title
             break;
 
           case 'complete':
-            // Stream complete, reload conversations list
-            loadConversations();
+            console.log('onEvent (complete): Stream finished.');
+            loadConversations(); // Reload conversations list
             setIsLoading(false);
+            // Note: If prev.messages is used here, it might be slightly stale if not careful.
+            // For simplicity and debugging, we assume the stream has finished and we'll reload from backend.
             break;
 
           case 'error':
             console.error('Stream error:', event.message);
+            // Remove optimistic messages on error
+            setCurrentConversation((prev) => {
+              // Attempt to remove the last two messages (user and placeholder assistant)
+              const updatedMessages = (prev?.messages || []).slice(0, -2);
+              const updatedConversation = { ...prev, messages: updatedMessages };
+              console.log('onEvent (error): currentConversation state after error handling:', JSON.stringify(updatedConversation));
+              return updatedConversation;
+            });
             setIsLoading(false);
             break;
 
@@ -173,14 +213,18 @@ function App() {
     } catch (error) {
       console.error('Failed to send message:', error);
       // Remove optimistic messages on error
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: prev.messages.slice(0, -2),
-      }));
+      setCurrentConversation((prev) => {
+        // Attempt to remove the last two messages (user and placeholder assistant)
+        const updatedMessages = (prev?.messages || []).slice(0, -2);
+        const updatedConversation = { ...prev, messages: updatedMessages };
+        console.log('handleSendMessage: currentConversation in catch block:', JSON.stringify(updatedConversation));
+        return updatedConversation;
+      });
       setIsLoading(false);
     }
   };
 
+  console.log('App component rendering. Current Conversation state before passing to ChatInterface:', JSON.stringify(currentConversation)); // Log currentConversation state before rendering ChatInterface
   return (
     <div className="app">
       <Sidebar
